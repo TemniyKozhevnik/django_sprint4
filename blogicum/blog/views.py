@@ -25,24 +25,6 @@ class BasePostQueryMixin:
 
 
 @method_decorator(login_required, name='dispatch')
-class ProfileUpdateView(UpdateView):
-    model = User
-    form_class = ProfileEditForm
-    template_name = 'blog/create.html'
-
-    def get_object(self, queryset=None):
-        return self.request.user
-
-    def get_success_url(self):
-        return reverse_lazy(
-            'blog:profile',
-            kwargs={
-                'username': self.request.user.username,
-            },
-        )
-
-
-@method_decorator(login_required, name='dispatch')
 class PostCreateView(CreateView):
     model = Post
     form_class = PostForm
@@ -62,6 +44,24 @@ class PostCreateView(CreateView):
 
 
 @method_decorator(login_required, name='dispatch')
+class ProfileUpdateView(UpdateView):
+    model = User
+    form_class = ProfileEditForm
+    template_name = 'blog/create.html'
+
+    def get_object(self, queryset=None):
+        return self.request.user
+
+    def get_success_url(self):
+        return reverse_lazy(
+            'blog:profile',
+            kwargs={
+                'username': self.request.user.username,
+            },
+        )
+    
+
+@method_decorator(login_required, name='dispatch')
 class PostUpdateView(UpdateView):
     model = Post
     form_class = PostForm
@@ -79,32 +79,6 @@ class PostUpdateView(UpdateView):
 
     def get_success_url(self):
         return reverse_lazy('blog:post_detail', kwargs={'pk': self.object.id})
-
-
-@method_decorator(login_required, name='dispatch')
-class PostDeleteView(DeleteView):
-    model = Post
-    template_name = 'blog/create.html'
-
-    def dispatch(self, request, *args, **kwargs):
-        user = request.user
-        post = get_object_or_404(Post, pk=kwargs['pk'])
-
-        if post.author != user and not user.is_superuser:
-            return redirect('blog:post_detail', kwargs['pk'])
-
-        return super().dispatch(request, *args, **kwargs)
-
-    def get_queryset(self):
-        return super().get_queryset().filter(author=self.request.user)
-
-    def get_success_url(self):
-        return reverse_lazy(
-            'blog:profile',
-            kwargs={
-                'username': self.request.user.username,
-            },
-        )
 
 
 @method_decorator(login_required, name='dispatch')
@@ -149,6 +123,32 @@ class CommentUpdateView(UpdateView):
                 'pk': self.kwargs['post_id'],
             },
         )
+    
+
+class CategoryDetailView(DetailView):
+    model = Category
+    paginate_posts_by = 10
+
+    def get_queryset(self):
+        return self.model.objects.filter(
+            is_published=True
+        ).prefetch_related('post_set')
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+
+        posts = self.object.post_set.filter(
+            is_published=True,
+            pub_date__lte=timezone.now(),
+        ).select_related('author', 'location', 'category')
+        paginator = Paginator(posts, self.paginate_posts_by)
+
+        page_number = self.request.GET.get('page', 1)
+        page_obj = paginator.get_page(page_number)
+
+        context['page_obj'] = page_obj
+
+        return context
 
 
 @method_decorator(login_required, name='dispatch')
@@ -176,6 +176,32 @@ class CommentDeleteView(DeleteView):
             },
         )
 
+
+@method_decorator(login_required, name='dispatch')
+class PostDeleteView(DeleteView):
+    model = Post
+    template_name = 'blog/create.html'
+
+    def dispatch(self, request, *args, **kwargs):
+        user = request.user
+        post = get_object_or_404(Post, pk=kwargs['pk'])
+
+        if post.author != user and not user.is_superuser:
+            return redirect('blog:post_detail', kwargs['pk'])
+
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_queryset(self):
+        return super().get_queryset().filter(author=self.request.user)
+
+    def get_success_url(self):
+        return reverse_lazy(
+            'blog:profile',
+            kwargs={
+                'username': self.request.user.username,
+            },
+        )
+    
 
 class PostListView(BasePostQueryMixin, ListView):
     model = Post
@@ -211,32 +237,6 @@ class PostDetailView(BasePostQueryMixin, DetailView):
         context['comments'] = comments
 
         context['form'] = CommentForm()
-
-        return context
-
-
-class CategoryDetailView(DetailView):
-    model = Category
-    paginate_posts_by = 10
-
-    def get_queryset(self):
-        return self.model.objects.filter(
-            is_published=True
-        ).prefetch_related('post_set')
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-
-        posts = self.object.post_set.filter(
-            is_published=True,
-            pub_date__lte=timezone.now(),
-        ).select_related('author', 'location', 'category')
-        paginator = Paginator(posts, self.paginate_posts_by)
-
-        page_number = self.request.GET.get('page', 1)
-        page_obj = paginator.get_page(page_number)
-
-        context['page_obj'] = page_obj
 
         return context
 
